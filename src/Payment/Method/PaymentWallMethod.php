@@ -31,9 +31,8 @@ class PaymentWallMethod extends PaymentMethod
     {
         $this->setupConfig();
 
-        $user = auth()->user();
-
         $payment = $this->createPayment($cart, $amount, $currency);
+        $user = $payment->user;
 
         $widget = new Widget(
             $user->id,
@@ -68,26 +67,25 @@ class PaymentWallMethod extends PaymentMethod
             return response()->json(['status' => false, 'message' => 'Payment not validated']);
         }
 
+        $payment = Payment::find(str_replace('payment_', '', $pingback->getProduct()->getId()));
+
+        if ($pingback->isCancelable()) {
+            return $this->processRefund($payment);
+        }
+
         if (! $pingback->isDeliverable()) {
             return response()->json(['status' => false, 'message' => 'Payment not deliverable']);
         }
 
-        $payment = Payment::find(str_replace('payment_', '', $pingback->getProduct()->getId()));
-
         return $this->processPayment($payment, $pingback->getReferenceId());
     }
 
-    public function success(Request $request)
-    {
-        return view('shop::payments.success');
-    }
-
-    public function view()
+    public function view(): string
     {
         return 'shop::admin.gateways.methods.paymentwall';
     }
 
-    public function rules()
+    public function rules(): array
     {
         return [
             'private-key' => ['required', 'string'],
@@ -95,7 +93,7 @@ class PaymentWallMethod extends PaymentMethod
         ];
     }
 
-    private function setupConfig()
+    private function setupConfig(): void
     {
         PaymentWallConfig::getInstance()->set([
             'api_type' => PaymentWallConfig::API_GOODS,

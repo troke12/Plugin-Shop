@@ -10,18 +10,14 @@ class PackageDelivered
 {
     use SerializesModels;
 
-    public $user;
+    public User $user;
 
-    public $package;
+    public Package $package;
 
-    public $quantity;
+    public int $quantity;
 
     /**
      * Create a new event instance.
-     *
-     * @param  \Azuriom\Models\User  $user
-     * @param  \Azuriom\Plugin\Shop\Models\Package  $package
-     * @param  int  $quantity
      */
     public function __construct(User $user, Package $package, int $quantity = 1)
     {

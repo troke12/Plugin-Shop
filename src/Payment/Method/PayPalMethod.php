@@ -40,7 +40,8 @@ class PayPalMethod extends PaymentMethod
             'quantity' => 1,
             'no_shipping' => 1,
             'no_note' => 1,
-            'return' => route('shop.cart.index'),
+            'return' => route('shop.payments.success', $this->id),
+            'cancel_return' => route('shop.cart.index'),
             'notify_url' => route('shop.payments.notification', $this->id),
             'custom' => $payment->id,
             'bn' => 'Azuriom',
@@ -56,33 +57,39 @@ class PayPalMethod extends PaymentMethod
         $response = Http::asForm()->post('https://ipnpb.paypal.com/cgi-bin/webscr', $data);
 
         if ($response->body() !== 'VERIFIED') {
-            return response()->json('Invalid response');
+            return response()->json('Invalid response from PayPal', 401);
         }
 
         $paymentId = $request->input('txn_id');
         $amount = $request->input('mc_gross');
         $currency = $request->input('mc_currency');
         $status = $request->input('payment_status');
+        $caseType = $request->input('case_type');
         $receiverEmail = Str::lower($request->input('receiver_email'));
 
-        if ($status === 'Canceled_Reversal') {
+        if ($status === 'Canceled_Reversal' || $caseType !== null) {
             return response()->noContent();
         }
 
         if ($status === 'Reversed') {
             $parentTransactionId = $request->input('parent_txn_id');
 
-            Payment::firstWhere('transaction_id', $parentTransactionId)->update(['status' => 'refund']);
+            $payment = Payment::firstWhere('transaction_id', $parentTransactionId);
 
-            return response()->noContent();
+            return $this->processChargeback($payment);
         }
 
         $payment = Payment::findOrFail($request->input('custom'));
 
         if ($status === 'Pending') {
             $payment->update(['status' => 'pending', 'transaction_id' => $paymentId]);
+            logger()->info('[Shop] Pending payment for #'.$paymentId);
 
             return response()->noContent();
+        }
+
+        if ($status === 'Refunded') {
+            return $this->processRefund($payment);
         }
 
         if ($status !== 'Completed') {
@@ -108,17 +115,12 @@ class PayPalMethod extends PaymentMethod
         return $this->processPayment($payment, $paymentId);
     }
 
-    public function success(Request $request)
-    {
-        return view('shop::payments.success');
-    }
-
-    public function view()
+    public function view(): string
     {
         return 'shop::admin.gateways.methods.paypal';
     }
 
-    public function rules()
+    public function rules(): array
     {
         return [
             'email' => ['required', 'email'],

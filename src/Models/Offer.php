@@ -2,9 +2,9 @@
 
 namespace Azuriom\Plugin\Shop\Models;
 
+use Azuriom\Models\Traits\HasImage;
 use Azuriom\Models\Traits\HasTablePrefix;
 use Azuriom\Models\Traits\Loggable;
-use Azuriom\Models\User;
 use Azuriom\Plugin\Shop\Models\Concerns\Buyable;
 use Azuriom\Plugin\Shop\Models\Concerns\IsBuyable;
 use Illuminate\Database\Eloquent\Model;
@@ -13,38 +13,37 @@ use Illuminate\Database\Eloquent\Model;
  * @property int $id
  * @property float $price
  * @property int $money
+ * @property string|null $image
  * @property bool $is_enabled
  * @property \Carbon\Carbon $created_at
  * @property \Carbon\Carbon $updated_at
- *
  * @property \Illuminate\Support\Collection|\Azuriom\Plugin\Shop\Models\Gateway[] $gateways
  */
 class Offer extends Model implements Buyable
 {
-    use IsBuyable;
+    use HasImage;
     use HasTablePrefix;
+    use IsBuyable;
     use Loggable;
 
     /**
      * The table prefix associated with the model.
-     *
-     * @var string
      */
-    protected $prefix = 'shop_';
+    protected string $prefix = 'shop_';
 
     /**
      * The attributes that are mass assignable.
      *
-     * @var array
+     * @var array<int, string>
      */
     protected $fillable = [
-        'name', 'price', 'money', 'is_enabled',
+        'name', 'price', 'money', 'image', 'is_enabled',
     ];
 
     /**
      * The attributes that should be cast to native types.
      *
-     * @var array
+     * @var array<string, string>
      */
     protected $casts = [
         'price' => 'float',
@@ -59,9 +58,13 @@ class Offer extends Model implements Buyable
         return $this->belongsToMany(Gateway::class, 'shop_offer_gateways');
     }
 
-    public function deliver(User $user, int $quantity = 1)
+    public function deliver(PaymentItem $item): void
     {
-        $user->addMoney($this->money * $quantity);
-        $user->save();
+        $item->payment->user->addMoney($this->money * $item->quantity);
+    }
+
+    public function getDescription(): string
+    {
+        return $this->name;
     }
 }

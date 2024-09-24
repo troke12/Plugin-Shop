@@ -16,43 +16,43 @@ class PaymentController extends Controller
 
         // If the cart isn't empty and the total is 0, just complete
         // the payment now as gateways won't accept null payment
-        if (! $cart->isEmpty() && $cart->total() < 0.1) {
-            PaymentManager::createPayment($cart, $cart->total(), currency(), 'free')->deliver();
+        if (! $cart->isEmpty() && $cart->payableTotal() < 0.1) {
+            PaymentManager::createPayment($cart, 0, currency(), 'free')->deliver();
 
             $cart->destroy();
 
-            return redirect()->route('shop.home')->with('success', trans('shop::messages.cart.purchase'));
+            return to_route('shop.home')->with('success', trans('shop::messages.cart.success'));
         }
 
         $gateways = Gateway::enabled()
             ->get()
-            ->filter(function ($gateway) {
-                if (! payment_manager()->hasPaymentMethod($gateway->type)) {
-                    return false;
-                }
+            ->filter(fn (Gateway $gateway) => $gateway->isSupported())
+            ->reject(fn (Gateway $gateway) => $gateway->paymentMethod()->hasFixedAmount());
 
-                return ! $gateway->paymentMethod()->hasFixedAmount();
-            });
+        // If there is only one payment gateway, redirect to it directly
+        if ($gateways->count() === 1) {
+            $gateway = $gateways->first();
+
+            return $gateway->paymentMethod()->startPayment($cart, $cart->payableTotal(), currency());
+        }
 
         return view('shop::payments.pay', ['gateways' => $gateways]);
     }
 
     /**
-     * Make a new payment.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @param  \Azuriom\Plugin\Shop\Models\Gateway  $gateway
-     * @return \Illuminate\Http\Response
+     * Start a new payment.
      */
     public function pay(Request $request, Gateway $gateway)
     {
+        abort_if(! $gateway->is_enabled, 403);
+
         $cart = Cart::fromSession($request->session());
 
         if ($cart->isEmpty()) {
-            return redirect()->route('shop.cart.index');
+            return to_route('shop.cart.index');
         }
 
-        return $gateway->paymentMethod()->startPayment($cart, $cart->total(), currency());
+        return $gateway->paymentMethod()->startPayment($cart, $cart->payableTotal(), currency());
     }
 
     public function success(Request $request, Gateway $gateway)

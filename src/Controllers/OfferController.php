@@ -6,6 +6,8 @@ use Azuriom\Http\Controllers\Controller;
 use Azuriom\Plugin\Shop\Cart\Cart;
 use Azuriom\Plugin\Shop\Models\Gateway;
 use Azuriom\Plugin\Shop\Models\Offer;
+use Closure;
+use Illuminate\Http\Request;
 
 class OfferController extends Controller
 {
@@ -14,7 +16,7 @@ class OfferController extends Controller
      */
     public function __construct()
     {
-        $this->middleware(function ($request, $next) {
+        $this->middleware(function (Request $request, Closure $next) {
             abort_if(! use_site_money(), 403);
 
             return $next($request);
@@ -25,15 +27,16 @@ class OfferController extends Controller
     {
         $gateways = Gateway::enabled()
             ->get()
-            ->filter(function ($gateway) {
-                return payment_manager()->hasPaymentMethod($gateway->type);
-            })->load('offers');
+            ->filter(fn (Gateway $gateway) => $gateway->isSupported())
+            ->load('offers');
 
         return view('shop::offers.payment', ['gateways' => $gateways]);
     }
 
     public function buy(Gateway $gateway)
     {
+        abort_if(! $gateway->is_enabled, 403);
+
         $gateway->load('offers');
 
         if ($gateway->paymentMethod()->hasFixedAmount()) {
@@ -48,10 +51,12 @@ class OfferController extends Controller
 
     public function pay(Offer $offer, Gateway $gateway)
     {
+        abort_if(! $gateway->is_enabled || ! $offer->is_enabled, 403);
+
         $cart = Cart::createEmpty();
 
         $cart->add($offer);
 
-        return $gateway->paymentMethod()->startPayment($cart, $cart->total(), currency());
+        return $gateway->paymentMethod()->startPayment($cart, $offer->price, currency());
     }
 }

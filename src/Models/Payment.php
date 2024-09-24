@@ -5,6 +5,7 @@ namespace Azuriom\Plugin\Shop\Models;
 use Azuriom\Azuriom;
 use Azuriom\Models\Traits\HasTablePrefix;
 use Azuriom\Models\Traits\HasUser;
+use Azuriom\Models\Traits\Searchable;
 use Azuriom\Models\User;
 use Azuriom\Plugin\Shop\Events\PaymentPaid;
 use Azuriom\Plugin\Shop\Notifications\PaymentPaid as PaymentPaidNotification;
@@ -12,10 +13,13 @@ use Azuriom\Support\Discord\DiscordWebhook;
 use Azuriom\Support\Discord\Embed;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * @property int $id
  * @property int $user_id
+ * @property int|null $subscription_id
  * @property float $price
  * @property string $currency
  * @property string $status
@@ -23,10 +27,11 @@ use Illuminate\Database\Eloquent\Model;
  * @property string $transaction_id
  * @property \Carbon\Carbon $created_at
  * @property \Carbon\Carbon $updated_at
- *
  * @property \Azuriom\Models\User $user
  * @property \Illuminate\Support\Collection|\Azuriom\Plugin\Shop\Models\PaymentItem[] $items
  * @property \Illuminate\Support\Collection|\Azuriom\Plugin\Shop\Models\Coupon[] $coupons
+ * @property \Illuminate\Support\Collection|\Azuriom\Plugin\Shop\Models\Giftcard[] $giftcards
+ * @property \Azuriom\Plugin\Shop\Models\Subscription|null $subscription
  *
  * @method static \Illuminate\Database\Eloquent\Builder completed()
  * @method static \Illuminate\Database\Eloquent\Builder pending()
@@ -38,18 +43,17 @@ class Payment extends Model
 {
     use HasTablePrefix;
     use HasUser;
+    use Searchable;
 
     /**
      * The table prefix associated with the model.
-     *
-     * @var string
      */
-    protected $prefix = 'shop_';
+    protected string $prefix = 'shop_';
 
     /**
      * The attributes that are mass assignable.
      *
-     * @var array
+     * @var array<int, string>
      */
     protected $fillable = [
         'price', 'currency', 'status', 'gateway_type', 'transaction_id', 'user_id',
@@ -58,10 +62,19 @@ class Payment extends Model
     /**
      * The attributes that should be cast to native types.
      *
-     * @var array
+     * @var array<string, string>
      */
     protected $casts = [
         'price' => 'float',
+    ];
+
+    /**
+     * The attributes that can be used for search.
+     *
+     * @var array<int, string>
+     */
+    protected array $searchable = [
+        'status', 'gateway_type', 'transaction_id', 'subscription_id', 'user.*',
     ];
 
     /**
@@ -88,111 +101,207 @@ class Payment extends Model
         return $this->belongsToMany(Coupon::class, 'shop_coupon_payment');
     }
 
-    public function getTypeName()
+    /**
+     * Get the associated subscription if this payment is for a subscription.
+     */
+    public function subscription()
     {
-        if ($this->gateway_type === 'free') {
-            return trans('shop::messages.free');
-        }
-
-        $paymentManager = payment_manager();
-
-        if (! $paymentManager->hasPaymentMethod($this->gateway_type)) {
-            return $this->gateway_type;
-        }
-
-        return $paymentManager->getPaymentMethod($this->gateway_type)->name();
+        return $this->belongsTo(Subscription::class);
     }
 
-    public function deliver()
+    /**
+     * Get the giftcards used in this payment.
+     */
+    public function giftcards()
+    {
+        return $this->belongsToMany(Giftcard::class, 'shop_giftcard_payment')
+            ->withPivot('amount');
+    }
+
+    public function getTypeName(): string
+    {
+        if ($this->isWithSiteMoney()) {
+            return site_name();
+        }
+
+        return Gateway::getNameByType($this->gateway_type);
+    }
+
+    public function deliver(bool $renewal = false): void
     {
         $this->update(['status' => 'completed']);
 
-        foreach ($this->items as $item) {
-            $item->deliver();
+        foreach ($this->giftcards as $giftcard) {
+            Cache::forget('shop.giftcards.pending.'.$giftcard->id);
         }
 
-        if ($this->gateway_type !== 'azuriom') {
+        foreach ($this->items as $item) {
+            $item->deliver($renewal);
+        }
+
+        if (! $this->isWithSiteMoney()) {
             event(new PaymentPaid($this));
+        }
 
-            if (($webhookUrl = setting('shop.webhook')) !== null) {
-                $embed = Embed::create()
-                    ->title(trans('shop::messages.payment.webhook'))
-                    ->author($this->user->name, null, $this->user->getAvatar())
-                    ->addField(trans('shop::messages.fields.price'), $this->price.' '.currency_display($this->currency))
-                    ->addField(trans('messages.fields.type'), $this->getTypeName())
-                    ->addField(trans('shop::messages.fields.payment-id'), $this->transaction_id)
-                    ->url(route('shop.admin.payments.show', $this))
-                    ->color('#004de6')
-                    ->footer('Azuriom v'.Azuriom::version())
-                    ->timestamp(now());
+        if (($webhookUrl = setting('shop.webhook')) !== null) {
+            rescue(fn () => $this->createDiscordWebhook()->send($webhookUrl));
+        }
 
-                rescue(function () use ($embed, $webhookUrl) {
-                    DiscordWebhook::create()->addEmbed($embed)->send($webhookUrl);
-                });
+        rescue(fn () => $this->user->notify(new PaymentPaidNotification($this)));
+    }
+
+    public function dispatchCommands(string $status): void
+    {
+        foreach ($this->items as $item) {
+            $item->dispatchCommands($status);
+        }
+    }
+
+    public function processGiftcards(float $originalTotal, Collection $giftcards): float
+    {
+        return $giftcards
+            ->filter(fn (Giftcard $card) => $card->isActive())
+            ->reduce(function ($total, Giftcard $card) {
+                if ($total <= 0) {
+                    return 0;
+                }
+
+                $newTotal = max($total - $card->balance, 0);
+
+                if ($newTotal > 0) {
+                    $this->giftcards()->attach($card, [
+                        'amount' => $card->balance,
+                    ]);
+
+                    $card->update(['balance' => 0]);
+                } else {
+                    $this->giftcards()->attach($card, [
+                        'amount' => $total,
+                    ]);
+
+                    $card->decrement('balance', $total);
+                }
+
+                Cache::put('shop.giftcards.pending.'.$card->id, true, now()->addMinutes(15));
+
+                return $newTotal;
+            }, $originalTotal);
+    }
+
+    public function createDiscordWebhook(): DiscordWebhook
+    {
+        $transactionId = $this->isWithSiteMoney() ? '#'.$this->id : $this->transaction_id;
+
+        $embed = Embed::create()
+            ->title(trans('shop::messages.payment.webhook'))
+            ->description(trans('shop::messages.payment.webhook_info', [
+                'total' => $this->formatPrice(),
+                'gateway' => $this->getTypeName(),
+                'id' => $transactionId ?? trans('messages.none'),
+            ]))
+            ->author($this->user->name, null, $this->user->getAvatar())
+            ->url(route('shop.admin.payments.show', $this))
+            ->color('#004de6')
+            ->footer('Azuriom v'.Azuriom::version())
+            ->timestamp(now());
+
+        foreach ($this->items as $item) {
+            $name = $item->name;
+
+            if ($item->quantity > 1) {
+                $name .= ' (x'.$item->quantity.')';
             }
 
-            $this->user->notify(new PaymentPaidNotification($this));
+            $embed->addField($name, $item->formatPrice());
         }
+
+        return DiscordWebhook::create()->addEmbed($embed);
     }
 
-    public function statusColor()
+    public function createRefundDiscordWebhook(bool $isChargeback = false): DiscordWebhook
     {
-        switch ($this->status) {
-            case 'pending':
-            case 'expired':
-                return 'warning';
-            case 'chargeback':
-            case 'error':
-                return 'danger';
-            case 'completed':
-                return 'success';
-            default:
-                return 'secondary';
-        }
+        $transactionId = $this->isWithSiteMoney() ? '#'.$this->id : $this->transaction_id;
+        $title = $isChargeback
+            ? trans('shop::messages.payment.webhook_chargeback')
+            : trans('shop::messages.payment.webhook_refund');
+
+        $embed = Embed::create()
+            ->title($title)
+            ->description(trans('shop::messages.payment.webhook_info', [
+                'total' => $this->formatPrice(),
+                'gateway' => $this->getTypeName(),
+                'id' => $transactionId ?? trans('messages.none'),
+            ]))
+            ->author($this->user->name, null, $this->user->getAvatar())
+            ->url(route('shop.admin.payments.show', $this))
+            ->color($isChargeback ? '#dc3545' : '#ffc107')
+            ->footer('Azuriom v'.Azuriom::version())
+            ->timestamp(now());
+
+        return DiscordWebhook::create()->addEmbed($embed);
     }
 
-    public function isPending()
+    public function statusColor(): string
+    {
+        return match ($this->status) {
+            'pending', 'expired' => 'warning',
+            'chargeback', 'error' => 'danger',
+            'completed' => 'success',
+            default => 'secondary',
+        };
+    }
+
+    public function formatPrice(): string
+    {
+        $currency = $this->isWithSiteMoney()
+            ? money_name($this->price)
+            : currency_display($this->currency);
+
+        return $this->price.' '.$currency;
+    }
+
+    public function isPending(): bool
     {
         return $this->status === 'pending';
     }
 
-    public function isCompleted()
+    public function isCompleted(): bool
     {
         return $this->status === 'completed';
     }
 
-    public function scopeCompleted(Builder $query)
+    public function isWithSiteMoney(): bool
     {
-        return $query->where('status', 'completed');
+        return $this->gateway_type === 'azuriom';
     }
 
-    public function scopePending(Builder $query)
+    public function scopeCompleted(Builder $query): void
     {
-        return $query->where('status', 'pending');
+        $query->where('status', 'completed');
     }
 
-    public function scopeNotPending(Builder $query)
+    public function scopePending(Builder $query): void
     {
-        return $query->where('status', '!=', 'pending');
+        $query->where('status', 'pending');
     }
 
-    public function scopeWithSiteMoney(Builder $query)
+    public function scopeNotPending(Builder $query): void
     {
-        return $query->where('gateway_type', '=', 'azuriom');
+        $query->where('status', '!=', 'pending');
     }
 
-    public function scopeWithRealMoney(Builder $query)
+    public function scopeWithSiteMoney(Builder $query): void
     {
-        return $query->where('gateway_type', '!=', 'azuriom');
+        $query->where('gateway_type', '=', 'azuriom');
     }
 
-    public function getPaymentIdAttribute()
+    public function scopeWithRealMoney(Builder $query): void
     {
-        return $this->transaction_id;
+        $query->where('gateway_type', '!=', 'azuriom');
     }
 
-    public function setPaymentIdAttribute($value)
+    public static function purgePendingPayments(): void
     {
-        $this->transaction_id = $value;
+        self::pending()->where('created_at', '<', now()->subWeeks(2))->delete();
     }
 }

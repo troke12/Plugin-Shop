@@ -3,6 +3,22 @@
 @section('title', trans('shop::admin.purchases.title'))
 
 @section('content')
+    <form class="row row-cols-lg-auto g-3 align-items-center" action="{{ route('shop.admin.purchases.index') }}" method="GET" role="search">
+        <div class="mb-3">
+            <label for="searchInput" class="visually-hidden">
+                {{ trans('messages.actions.search') }}
+            </label>
+
+            <div class="input-group">
+                <input type="search" class="form-control" id="searchInput" name="search" value="{{ $search ?? '' }}" placeholder="{{ trans('messages.actions.search') }}">
+
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-search"></i>
+                </button>
+            </div>
+        </div>
+    </form>
+
     <div class="card shadow mb-4">
         <div class="card-body">
 
@@ -28,7 +44,7 @@
                             <td>{{ format_money($purchase->price) }}</td>
                             <td>{{ format_date_compact($purchase->created_at) }}</td>
                             <td>
-                                <a href="{{ route('shop.admin.payments.show', $purchase) }}" class="mx-1" title="{{ trans('messages.actions.show') }}" data-toggle="tooltip"><i class="fas fa-eye"></i></a>
+                                <a href="{{ route('shop.admin.payments.show', $purchase) }}" class="mx-1" title="{{ trans('messages.actions.show') }}" data-bs-toggle="tooltip"><i class="bi bi-eye"></i></a>
                             </td>
                         </tr>
                     @endforeach
@@ -37,7 +53,7 @@
                 </table>
             </div>
 
-            {{ $purchases->links() }}
+            {{ $purchases->withQueryString()->links() }}
         </div>
     </div>
 @endsection

@@ -14,6 +14,7 @@
                         <th scope="col">{{ trans('shop::messages.fields.discount') }}</th>
                         <th scope="col">{{ trans('messages.fields.enabled') }}</th>
                         <th scope="col">{{ trans('shop::admin.coupons.active') }}</th>
+                        <th scope="col">{{ trans('shop::admin.coupons.usage') }}</th>
                         <th scope="col">{{ trans('messages.fields.action') }}</th>
                     </tr>
                     </thead>
@@ -25,18 +26,23 @@
                             <td>{{ $coupon->code }}</td>
                             <td>{{ $coupon->is_fixed ? shop_format_amount($coupon->discount) : $coupon->discount.' %' }}</td>
                             <td>
-                                <span class="badge badge-{{ $coupon->is_enabled ? 'success' : 'danger' }}">
+                                <span class="badge bg-{{ $coupon->is_enabled ? 'success' : 'danger' }}">
                                     {{ trans_bool($coupon->is_enabled) }}
                                 </span>
                             </td>
                             <td>
-                                <span class="badge badge-{{ $coupon->isActive() ? 'success' : 'danger' }}">
+                                <span class="badge bg-{{ $coupon->isActive() ? 'success' : 'danger' }}">
                                     {{ trans_bool($coupon->isActive()) }}
                                 </span>
                             </td>
                             <td>
-                                <a href="{{ route('shop.admin.coupons.edit', $coupon) }}" class="mx-1" title="{{ trans('messages.actions.edit') }}" data-toggle="tooltip"><i class="fas fa-edit"></i></a>
-                                <a href="{{ route('shop.admin.coupons.destroy', $coupon) }}" class="mx-1" title="{{ trans('messages.actions.delete') }}" data-toggle="tooltip" data-confirm="delete"><i class="fas fa-trash"></i></a>
+                                <span class="badge bg-{{ $coupon->hasReachGlobalLimit() ? 'danger' : 'success' }}">
+                                    {{ trans_bool(! $coupon->hasReachGlobalLimit()) }}
+                                </span>
+                            </td>
+                            <td>
+                                <a href="{{ route('shop.admin.coupons.edit', $coupon) }}" class="mx-1" title="{{ trans('messages.actions.edit') }}" data-bs-toggle="tooltip"><i class="bi bi-pencil-square"></i></a>
+                                <a href="{{ route('shop.admin.coupons.destroy', $coupon) }}" class="mx-1" title="{{ trans('messages.actions.delete') }}" data-bs-toggle="tooltip" data-confirm="delete"><i class="bi bi-trash"></i></a>
                             </td>
                         </tr>
                     @endforeach
@@ -46,7 +52,7 @@
             </div>
 
             <a class="btn btn-primary" href="{{ route('shop.admin.coupons.create') }}">
-                <i class="fas fa-plus"></i> {{ trans('messages.actions.add') }}
+                <i class="bi bi-plus-lg"></i> {{ trans('messages.actions.add') }}
             </a>
         </div>
     </div>

@@ -5,44 +5,50 @@ namespace Azuriom\Plugin\Shop\Controllers;
 use Azuriom\Http\Controllers\Controller;
 use Azuriom\Plugin\Shop\Models\Category;
 use Azuriom\Plugin\Shop\Models\Payment;
+use Illuminate\Contracts\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\HtmlString;
 
 class CategoryController extends Controller
 {
     /**
      * Display a listing of the resource.
-     *
-     * @return \Illuminate\Http\Response
      */
     public function index()
     {
-        $category = Category::scopes(['parents', 'enabled'])->first();
+        $categories = $this->getCategories();
 
-        if ($category === null) {
-            return view('shop::categories.index', [
-                'goal' => $this->getMonthGoal(),
-            ]);
+        if (! setting('shop.home.enabled', true) && ! $categories->isEmpty()) {
+            request()->session()->reflash();
+
+            return to_route('shop.categories.show', $categories->first());
         }
 
-        return $this->show($category);
+        $message = setting('shop.home', trans('shop::messages.welcome'));
+
+        return view('shop::categories.index', [
+            'category' => null,
+            'categories' => $categories,
+            'displayHome' => true,
+            'goal' => $this->getMonthGoal(),
+            'topCustomer' => $this->getTopCustomer(),
+            'recentPayments' => $this->getRecentPayments(),
+            'displaySidebarAmount' => setting('shop.display_amount', true),
+            'welcome' => new HtmlString($message),
+        ]);
     }
 
     /**
      * Display the specified resource.
-     *
-     * @param  \Azuriom\Plugin\Shop\Models\Category  $category
-     * @return \Illuminate\Http\Response
      */
     public function show(Category $category)
     {
-        $categories = Category::scopes(['parents', 'enabled'])
-            ->with('categories')
-            ->withCount('packages')
-            ->get()
-            ->filter(function (Category $cat) use ($category) {
-                return $cat->is($category) || ! $cat->categories->isEmpty() || $cat->packages_count > 0;
-            });
+        $categories = $this->getCategories();
 
-        $category->load('packages.discounts');
+        $category->load(['packages' => function (Builder $query) {
+            $query->with('discounts')->scopes(['enabled']);
+        }]);
 
         foreach ($category->packages as $package) {
             $package->setRelation('category', $category);
@@ -51,13 +57,17 @@ class CategoryController extends Controller
         return view('shop::categories.show', [
             'category' => $category,
             'categories' => $categories,
+            'displayHome' => setting('shop.home.enabled', true),
             'goal' => $this->getMonthGoal(),
+            'topCustomer' => $this->getTopCustomer(),
+            'recentPayments' => $this->getRecentPayments(),
+            'displaySidebarAmount' => setting('shop.display_amount', true),
         ]);
     }
 
-    protected function getMonthGoal()
+    protected function getMonthGoal(): float
     {
-        if (! setting('shop.month-goal')) {
+        if (! setting('shop.month_goal')) {
             return false;
         }
 
@@ -65,6 +75,54 @@ class CategoryController extends Controller
             ->where('created_at', '>', now()->startOfMonth())
             ->sum('price');
 
-        return round(($total / setting('shop.month-goal')) * 100, 2);
+        return round(($total / setting('shop.month_goal')) * 100, 2);
+    }
+
+    protected function getRecentPayments(): ?Collection
+    {
+        $maxPayments = (int) setting('shop.recent_payments', 0);
+
+        if ($maxPayments === 0) {
+            return null;
+        }
+
+        return Payment::scopes(['completed', 'withRealMoney'])
+            ->with('user')
+            ->latest()
+            ->take($maxPayments)
+            ->get();
+    }
+
+    protected function getTopCustomer(): ?object
+    {
+        if (! setting('shop.top_customer', false)) {
+            return null;
+        }
+
+        $column = Payment::query()->getGrammar()->wrap('price');
+
+        $payment = Payment::scopes(['completed', 'withRealMoney'])
+            ->select(['user_id', DB::raw("sum({$column}) as aggregate")])
+            ->where('created_at', '>', now()->startOfMonth())
+            ->groupBy('user_id')
+            ->orderByDesc('aggregate')
+            ->first();
+
+        if ($payment === null || $payment->user === null) {
+            return null;
+        }
+
+        return (object) [
+            'user' => $payment->user,
+            'total' => $payment->aggregate,
+        ];
+    }
+
+    protected function getCategories(): Collection
+    {
+        return Category::scopes(['parents', 'enabled'])
+            ->with('categories')
+            ->withCount('packages')
+            ->get();
     }
 }

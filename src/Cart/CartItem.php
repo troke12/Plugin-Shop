@@ -17,55 +17,48 @@ class CartItem implements Arrayable
     /**
      * The cart where this item is stored.
      * The cart *may* not contain this item if it was removed.
-     *
-     * @var \Azuriom\Plugin\Shop\Cart\Cart
      */
-    private $cart;
+    private Cart $cart;
 
     /**
      * The ID of the cart item with the format '{model class}-{model id}'.
-     *
-     * @var string
      */
-    public $itemId;
+    public string $itemId;
 
     /**
      * The ID of the item.
-     *
-     * @var int
      */
-    public $id;
+    public int $id;
 
     /**
      * The quantity for this cart item.
-     *
-     * @var int
      */
-    public $quantity;
+    public int $quantity;
+
+    /**
+     * The variables for this cart item.
+     */
+    public array $variables;
 
     /**
      * The model class.
-     *
-     * @var string
      */
-    public $type;
+    public string $type;
 
     /**
      * The associated model.
-     *
-     * @var \Azuriom\Plugin\Shop\Models\Concerns\Buyable
      */
-    private $buyable;
+    private Buyable $buyable;
 
     /**
-     * Create a new item instance.
-     *
-     * @param  \Azuriom\Plugin\Shop\Cart\Cart  $cart
-     * @param  \Azuriom\Plugin\Shop\Models\Concerns\Buyable  $buyable
-     * @param  string  $itemId
-     * @param  int  $quantity
+     * The user-defined price for this cart item (if applicable).
      */
-    public function __construct(Cart $cart, Buyable $buyable, string $itemId, int $quantity = 1)
+    public ?float $userPrice = null;
+
+    /**
+     * Create a new cart item instance.
+     */
+    public function __construct(Cart $cart, Buyable $buyable, string $itemId, int $quantity = 1, array $variables = [])
     {
         $this->cart = $cart;
         $this->id = $buyable->id;
@@ -73,14 +66,13 @@ class CartItem implements Arrayable
         $this->type = get_class($buyable);
         $this->buyable = $buyable;
         $this->setQuantity($quantity);
+        $this->variables = $variables;
     }
 
     /**
      * Set the quantity for this cart item.
-     *
-     * @param  int  $quantity
      */
-    public function setQuantity(int $quantity)
+    public function setQuantity(int $quantity): void
     {
         $maxQuantity = $this->buyable->getMaxQuantity();
 
@@ -93,35 +85,33 @@ class CartItem implements Arrayable
 
     /**
      * Retrieve the buyable model.
-     *
-     * @return \Azuriom\Plugin\Shop\Models\Concerns\Buyable
      */
-    public function buyable()
+    public function buyable(): Buyable
     {
         return $this->buyable;
     }
 
-    public function hasQuantity()
+    public function hasQuantity(): bool
     {
         return $this->buyable->hasQuantity();
     }
 
-    public function maxQuantity()
+    public function maxQuantity(): int
     {
         return $this->buyable->getMaxQuantity();
     }
 
-    public function name()
+    public function name(): string
     {
         return $this->buyable->getName();
     }
 
-    public function originalPrice()
+    public function originalPrice(): float
     {
-        return $this->buyable->getPrice();
+        return $this->userPrice ?? $this->buyable->getPrice();
     }
 
-    public function price()
+    public function price(): float
     {
         $package = $this->buyable;
 
@@ -129,30 +119,22 @@ class CartItem implements Arrayable
             return $this->originalPrice();
         }
 
-        $coupons = $this->cart->coupons()
-            ->filter(function (Coupon $coupon) use ($package) {
-                return $coupon->isActiveOn($package);
-            });
-
-        // Apply % first
-        $price = $coupons->where('is_fixed', false)->reduce(function ($price, Coupon $coupon) {
-            return $coupon->applyOn($price);
-        }, $this->originalPrice());
-
-        // Then apply fixed amounts
-        $price = $coupons->where('is_fixed', true)->reduce(function ($price, Coupon $coupon) {
-            return $coupon->applyOn($price);
-        }, $price);
+        $price = $this->cart->coupons()
+            ->where('is_fixed', false)
+            ->filter(fn (Coupon $coupon) => $coupon->isActiveOn($package))
+            ->reduce(function ($price, Coupon $coupon) {
+                return $coupon->applyOn($price);
+            }, $this->originalPrice());
 
         return round($price, 2);
     }
 
-    public function originalTotal()
+    public function originalTotal(): float
     {
         return $this->originalPrice() * $this->quantity;
     }
 
-    public function total()
+    public function total(): float
     {
         return $this->price() * $this->quantity;
     }
@@ -160,13 +142,15 @@ class CartItem implements Arrayable
     /**
      * {@inheritdoc}
      */
-    public function toArray()
+    public function toArray(): array
     {
         return [
             'id' => $this->id,
             'itemId' => $this->itemId,
             'type' => $this->type,
             'quantity' => $this->quantity,
+            'userPrice' => $this->userPrice,
+            'variables' => $this->variables,
         ];
     }
 }

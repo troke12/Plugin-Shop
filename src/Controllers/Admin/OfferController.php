@@ -6,13 +6,13 @@ use Azuriom\Http\Controllers\Controller;
 use Azuriom\Plugin\Shop\Models\Gateway;
 use Azuriom\Plugin\Shop\Models\Offer;
 use Azuriom\Plugin\Shop\Requests\OfferRequest;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Collection;
 
 class OfferController extends Controller
 {
     /**
      * Display a listing of the resource.
-     *
-     * @return \Illuminate\Http\Response
      */
     public function index()
     {
@@ -21,8 +21,6 @@ class OfferController extends Controller
 
     /**
      * Show the form for creating a new resource.
-     *
-     * @return \Illuminate\Http\Response
      */
     public function create()
     {
@@ -31,27 +29,23 @@ class OfferController extends Controller
 
     /**
      * Store a newly created resource in storage.
-     *
-     * @param  \Azuriom\Plugin\Shop\Requests\OfferRequest  $request
-     * @return \Illuminate\Http\Response
      */
     public function store(OfferRequest $request)
     {
-        $offer = Offer::create($request->validated());
+        $offer = Offer::create(Arr::except($request->validated(), ['image', 'gateways']));
 
-        $gateways = array_keys($request->input('gateways', []));
+        $offer->gateways()->sync($request->input('gateways', []));
 
-        $offer->gateways()->sync($gateways);
+        if ($request->hasFile('image')) {
+            $offer->storeImage($request->file('image'), true);
+        }
 
-        return redirect()->route('shop.admin.offers.index')
-            ->with('success', trans('shop::admin.offers.status.created'));
+        return to_route('shop.admin.offers.index')
+            ->with('success', trans('messages.status.success'));
     }
 
     /**
      * Show the form for editing the specified resource.
-     *
-     * @param  \Azuriom\Plugin\Shop\Models\Offer  $offer
-     * @return \Illuminate\Http\Response
      */
     public function edit(Offer $offer)
     {
@@ -63,43 +57,38 @@ class OfferController extends Controller
 
     /**
      * Update the specified resource in storage.
-     *
-     * @param  \Azuriom\Plugin\Shop\Requests\OfferRequest  $request
-     * @param  \Azuriom\Plugin\Shop\Models\Offer  $offer
-     * @return \Illuminate\Http\Response
      */
     public function update(OfferRequest $request, Offer $offer)
     {
-        $offer->update($request->validated());
+        $offer->update(Arr::except($request->validated(), ['image', 'gateways']));
 
-        $gateways = array_keys($request->input('gateways', []));
+        if ($request->hasFile('image')) {
+            $offer->storeImage($request->file('image'), true);
+        }
 
-        $offer->gateways()->sync($gateways);
+        $offer->gateways()->sync($request->input('gateways', []));
 
-        return redirect()->route('shop.admin.offers.index')
-            ->with('success', trans('shop::admin.offers.status.updated'));
+        return to_route('shop.admin.offers.index')
+            ->with('success', trans('messages.status.success'));
     }
 
     /**
      * Remove the specified resource from storage.
      *
-     * @param  \Azuriom\Plugin\Shop\Models\Offer  $offer
-     * @return \Illuminate\Http\Response
-     *
-     * @throws \Exception
+     * @throws \LogicException
      */
     public function destroy(Offer $offer)
     {
         $offer->delete();
 
-        return redirect()->route('shop.admin.offers.index')
-            ->with('success', trans('shop::admin.offers.status.deleted'));
+        return to_route('shop.admin.offers.index')
+            ->with('success', trans('messages.status.success'));
     }
 
-    private function getGateways()
+    private function getGateways(): Collection
     {
-        return Gateway::all()->filter(function (Gateway $gateway) {
-            return payment_manager()->hasPaymentMethod($gateway->type) && ! $gateway->paymentMethod()->hasFixedAmount();
-        });
+        return Gateway::all()
+            ->filter(fn (Gateway $gateway) => $gateway->isSupported())
+            ->reject(fn (Gateway $gateway) => $gateway->paymentMethod()->hasFixedAmount());
     }
 }

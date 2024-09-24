@@ -2,21 +2,23 @@
 
 namespace Azuriom\Plugin\Shop\Models;
 
+use Azuriom\Models\Role;
 use Azuriom\Models\Traits\HasTablePrefix;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\Json;
 use Illuminate\Database\Eloquent\Model;
 
 /**
  * @property int $id
  * @property string $name
  * @property int $discount
+ * @property array|null $roles
  * @property bool $is_global
  * @property bool $is_enabled
  * @property \Carbon\Carbon $start_at
  * @property \Carbon\Carbon $end_at
  * @property \Carbon\Carbon $created_at
  * @property \Carbon\Carbon $updated_at
- *
  * @property \Illuminate\Support\Collection|\Azuriom\Plugin\Shop\Models\Package[] $packages
  *
  * @method static \Illuminate\Database\Eloquent\Builder enabled()
@@ -29,26 +31,25 @@ class Discount extends Model
 
     /**
      * The table prefix associated with the model.
-     *
-     * @var string
      */
-    protected $prefix = 'shop_';
+    protected string $prefix = 'shop_';
 
     /**
      * The attributes that are mass assignable.
      *
-     * @var array
+     * @var array<int, string>
      */
     protected $fillable = [
-        'name', 'discount', 'packages', 'is_global', 'is_enabled', 'start_at', 'end_at',
+        'name', 'discount', 'packages', 'roles', 'is_global', 'is_enabled', 'start_at', 'end_at',
     ];
 
     /**
      * The attributes that should be cast to native types.
      *
-     * @var array
+     * @var array<string, string>
      */
     protected $casts = [
+        'roles' => 'array',
         'start_at' => 'datetime',
         'end_at' => 'datetime',
         'is_global' => 'boolean',
@@ -65,59 +66,54 @@ class Discount extends Model
 
     /**
      * Determine if this discount is currently active.
-     *
-     * @return bool
      */
-    public function isActive()
+    public function isActive(): bool
     {
         return $this->is_enabled && $this->start_at->isPast() && $this->end_at->isFuture();
     }
 
-    public function isActiveOn(Package $package)
+    /**
+     * Determine if this discount is active for the given role.
+     */
+    public function activeForRole(?Role $role): bool
     {
-        if (! $this->isActive()) {
-            return false;
-        }
-
-        if ($this->is_global) {
+        if ($this->roles === null) {
             return true;
         }
 
-        return $this->packages->contains($package);
+        return $role !== null && in_array($role->id, $this->roles, true);
     }
 
     /**
      * Scope a query to only include active discounts.
-     *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @return \Illuminate\Database\Eloquent\Builder
      */
-    public function scopeActive(Builder $query)
+    public function scopeActive(Builder $query): void
     {
-        return $query->where('is_enabled', true)
+        $query->where('is_enabled', true)
             ->where('start_at', '<', now())
             ->where('end_at', '>', now());
     }
 
     /**
      * Scope a query to only include enabled discounts.
-     *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @return \Illuminate\Database\Eloquent\Builder
      */
-    public function scopeEnabled(Builder $query)
+    public function scopeEnabled(Builder $query): void
     {
-        return $query->where('is_enabled', true);
+        $query->where('is_enabled', true);
     }
 
     /**
      * Scope a query to only include global discounts.
-     *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @return \Illuminate\Database\Eloquent\Builder
      */
-    public function scopeGlobal(Builder $query)
+    public function scopeGlobal(Builder $query): void
     {
-        return $query->where('is_global', true);
+        $query->where('is_global', true);
+    }
+
+    public function setRolesAttribute(?array $roles): void
+    {
+        $this->attributes['roles'] = optional($roles, function (array $roles) {
+            return Json::encode(array_map(fn ($val) => (int) $val, $roles));
+        });
     }
 }

@@ -4,19 +4,17 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-class CreateShopOffersTable extends Migration
+return new class extends Migration
 {
     /**
      * Run the migrations.
-     *
-     * @return void
      */
-    public function up()
+    public function up(): void
     {
         Schema::create('shop_offers', function (Blueprint $table) {
             $table->increments('id');
             $table->string('name');
-            $table->unsignedDecimal('price');
+            $table->decimal('price');
             $table->unsignedInteger('money');
             $table->boolean('is_enabled')->default(true);
             $table->timestamps();
@@ -26,20 +24,17 @@ class CreateShopOffersTable extends Migration
             $table->unsignedInteger('offer_id');
             $table->unsignedInteger('gateway_id');
 
-            $table->foreign('offer_id')->references('id')->on('shop_offers')->onDelete('cascade');
-            $table->foreign('gateway_id')->references('id')->on('shop_gateways')->onDelete('cascade');
+            $table->foreign('offer_id')->references('id')->on('shop_offers')->cascadeOnDelete();
+            $table->foreign('gateway_id')->references('id')->on('shop_gateways')->cascadeOnDelete();
         });
     }
 
     /**
      * Reverse the migrations.
-     *
-     * @return void
      */
-    public function down()
+    public function down(): void
     {
         Schema::dropIfExists('shop_offers');
-
         Schema::dropIfExists('shop_offer_gateways');
     }
-}
+};

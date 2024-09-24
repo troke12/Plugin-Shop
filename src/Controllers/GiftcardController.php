@@ -3,6 +3,7 @@
 namespace Azuriom\Plugin\Shop\Controllers;
 
 use Azuriom\Http\Controllers\Controller;
+use Azuriom\Plugin\Shop\Cart\Cart;
 use Azuriom\Plugin\Shop\Models\Giftcard;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -10,34 +11,42 @@ use Illuminate\Validation\ValidationException;
 class GiftcardController extends Controller
 {
     /**
-     * Add a giftcard to the user.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
+     * Add a giftcard to the cart.
      *
      * @throws \Illuminate\Validation\ValidationException
      */
     public function add(Request $request)
     {
-        $validated = $this->validate($request, [
-            'code' => ['required'],
-        ]);
+        $validated = $this->validate($request, ['code' => 'required']);
 
-        $giftcard = Giftcard::active()->firstWhere($validated);
-        $user = $request->user();
+        $giftcard = Giftcard::firstWhere($validated);
 
-        if ($giftcard === null || $giftcard->hasReachLimit($user)) {
+        if ($giftcard !== null && $giftcard->isPending()) {
+            throw ValidationException::withMessages([
+                'code' => trans('shop::messages.giftcards.pending'),
+            ]);
+        }
+
+        $giftcard?->refreshBalance();
+
+        if ($giftcard === null || ! $giftcard->isActive()) {
             throw ValidationException::withMessages([
                 'code' => trans('shop::messages.giftcards.error'),
             ]);
         }
 
-        $user->addMoney($giftcard->amount);
+        Cart::fromSession($request->session())->addGiftcard($giftcard);
 
-        $giftcard->users()->attach($user);
+        return to_route('shop.cart.index');
+    }
 
-        return redirect()->back()->with('success', trans('shop::messages.giftcards.success', [
-            'money' => format_money($giftcard->amount),
-        ]));
+    /**
+     * Remove a giftcard from the cart.
+     */
+    public function remove(Request $request, Giftcard $giftcard)
+    {
+        Cart::fromSession($request->session())->removeGiftcard($giftcard);
+
+        return to_route('shop.cart.index');
     }
 }

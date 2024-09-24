@@ -2,11 +2,15 @@
     "id": "shop",
     "name": "Shop",
     "description": "A shop plugin to sell in-game items on your website.",
-    "version": "0.2.18",
-    "url": "https://azuriom.com/market/resources/1",
+    "version": "1.2.7",
+    "url": "https://market.azuriom.com/resources/1",
     "authors": [
         "Azuriom"
     ],
+    "dependencies": {
+        "azuriom": "^1.1.10"
+    },
+    "azuriom_api": "1.1.0",
     "providers": [
         "\\Azuriom\\Plugin\\Shop\\Providers\\ShopServiceProvider",
         "\\Azuriom\\Plugin\\Shop\\Providers\\RouteServiceProvider"

@@ -9,13 +9,8 @@ class PaymentController
 {
     /**
      * Handle a payment notification.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @param  \Azuriom\Plugin\Shop\Models\Gateway  $gateway
-     * @param  string|null  $id
-     * @return \Illuminate\Http\Response
      */
-    public function notification(Request $request, Gateway $gateway, string $id = null)
+    public function notification(Request $request, Gateway $gateway, ?string $id = null)
     {
         return $gateway->paymentMethod()->notification($request, $id);
     }

@@ -5,29 +5,35 @@ namespace Azuriom\Plugin\Shop\Controllers;
 use Azuriom\Http\Controllers\Controller;
 use Azuriom\Plugin\Shop\Cart\Cart;
 use Azuriom\Plugin\Shop\Models\Package;
+use Azuriom\Support\Markdown;
+use Exception;
 use Illuminate\Http\Request;
+use Illuminate\Support\HtmlString;
+use Illuminate\Support\Str;
 
 class CartController extends Controller
 {
     /**
      * Display the user cart.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
      */
     public function index(Request $request)
     {
+        $terms = setting('shop.required_terms');
+
+        if ($terms !== null) {
+            $markdown = Markdown::parse($terms, true);
+
+            $terms = new HtmlString(Str::between($markdown, '<p>', '</p>'));
+        }
+
         return view('shop::cart.index', [
             'cart' => Cart::fromSession($request->session()),
+            'terms' => $terms,
         ]);
     }
 
     /**
      * Remove a package from the cart.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @param  \Azuriom\Plugin\Shop\Models\Package  $package
-     * @return \Illuminate\Http\Response
      */
     public function remove(Request $request, Package $package)
     {
@@ -35,14 +41,11 @@ class CartController extends Controller
 
         $cart->remove($package);
 
-        return redirect()->route('shop.cart.index');
+        return to_route('shop.cart.index');
     }
 
     /**
      * Update the quantity of the items in the cart.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
      */
     public function update(Request $request)
     {
@@ -58,53 +61,55 @@ class CartController extends Controller
             $cart->save();
         }
 
-        return redirect()->route('shop.cart.index');
+        return to_route('shop.cart.index');
     }
 
     /**
      * Clear the user cart.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
      */
     public function clear(Request $request)
     {
         Cart::fromSession($request->session())->clear();
 
-        return redirect()->route('shop.cart.index');
+        return to_route('shop.cart.index');
     }
 
     /**
      * Pay using the website money.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
      */
     public function payment(Request $request)
     {
         if (! use_site_money()) {
-            return redirect()->route('shop.cart.index');
+            return to_route('shop.cart.index');
         }
 
         $cart = Cart::fromSession($request->session());
 
         if ($cart->isEmpty()) {
-            return redirect()->route('shop.cart.index');
+            return to_route('shop.cart.index');
         }
 
         $user = $request->user();
+        $total = $cart->payableTotal();
 
-        if (! $user->hasMoney($cart->total())) {
-            return redirect()->route('shop.cart.index')->with('error', trans('shop::messages.cart.error-money'));
+        if (! $user->hasMoney($total)) {
+            return to_route('shop.cart.index')->with('error', trans('shop::messages.cart.errors.money'));
         }
 
-        $user->removeMoney($cart->total());
-        $user->save();
+        $user->removeMoney($total);
 
-        payment_manager()->buyPackages($cart);
+        try {
+            payment_manager()->buyPackages($cart);
+        } catch (Exception $e) {
+            report($e);
+
+            $user->addMoney($total);
+
+            return to_route('shop.cart.index')->with('error', trans('shop::messages.cart.errors.execute'));
+        }
 
         $cart->destroy();
 
-        return redirect()->route('shop.home')->with('success', trans('shop::messages.cart.purchase'));
+        return to_route('shop.home')->with('success', trans('shop::messages.cart.success'));
     }
 }

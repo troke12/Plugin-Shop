@@ -4,14 +4,12 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-class CreateShopPackagesTable extends Migration
+return new class extends Migration
 {
     /**
      * Run the migrations.
-     *
-     * @return void
      */
-    public function up()
+    public function up(): void
     {
         Schema::create('shop_packages', function (Blueprint $table) {
             $table->increments('id');
@@ -21,9 +19,10 @@ class CreateShopPackagesTable extends Migration
             $table->text('description');
             $table->unsignedInteger('position')->default(0);
             $table->string('image')->nullable();
-            $table->unsignedDecimal('price');
+            $table->decimal('price');
             $table->text('commands');
-            $table->boolean('need_online')->default(false);
+            $table->unsignedInteger('role_id')->nullable();
+            $table->text('required_roles')->nullable();
             $table->unsignedInteger('user_limit')->nullable();
             $table->text('required_packages')->nullable();
             $table->boolean('has_quantity')->default(true);
@@ -31,25 +30,15 @@ class CreateShopPackagesTable extends Migration
             $table->timestamps();
 
             $table->foreign('category_id')->references('id')->on('shop_categories');
-        });
-
-        Schema::create('shop_package_server', function (Blueprint $table) {
-            $table->unsignedInteger('package_id');
-            $table->unsignedInteger('server_id');
-
-            $table->foreign('package_id')->references('id')->on('shop_packages')->onDelete('cascade');
-            $table->foreign('server_id')->references('id')->on('servers')->onDelete('cascade');
+            $table->foreign('role_id')->references('id')->on('roles')->nullOnDelete();
         });
     }
 
     /**
      * Reverse the migrations.
-     *
-     * @return void
      */
-    public function down()
+    public function down(): void
     {
         Schema::dropIfExists('shop_packages');
-        Schema::dropIfExists('shop_package_server');
     }
-}
+};

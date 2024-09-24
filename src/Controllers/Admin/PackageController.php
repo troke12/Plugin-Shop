@@ -7,6 +7,7 @@ use Azuriom\Models\Role;
 use Azuriom\Models\Server;
 use Azuriom\Plugin\Shop\Models\Category;
 use Azuriom\Plugin\Shop\Models\Package;
+use Azuriom\Plugin\Shop\Models\Variable;
 use Azuriom\Plugin\Shop\Requests\PackageRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -15,21 +16,18 @@ class PackageController extends Controller
 {
     /**
      * Display a listing of the resource.
-     *
-     * @return \Illuminate\Http\Response
      */
     public function index()
     {
-        $categories = Category::parents()->with('packages')->get();
+        $categories = Category::parents()
+            ->with(['categories.packages', 'categories.categories', 'packages'])
+            ->get();
 
         return view('shop::admin.packages.index', ['categories' => $categories]);
     }
 
     /**
      * Update the order of the resources.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
      *
      * @throws \Illuminate\Validation\ValidationException
      */
@@ -78,81 +76,76 @@ class PackageController extends Controller
         }
 
         return response()->json([
-            'message' => trans('shop::admin.packages.status.order-updated'),
+            'message' => trans('shop::admin.packages.updated'),
         ]);
     }
 
     /**
-     * Clone the specified package.
-     *
-     * @param  \Azuriom\Plugin\Shop\Models\Package  $package
-     * @return \Illuminate\Http\Response
+     * Duplicate the specified package.
      */
-    public function clone(Package $package)
+    public function duplicate(Package $package)
     {
-        $clone = $package->replicate();
+        $replicate = $package->replicate();
 
-        $clone->update(['image' => null]);
+        $replicate->fill(['image' => null])->save();
 
-        return redirect()->route('shop.admin.packages.edit', $clone);
+        return to_route('shop.admin.packages.edit', ['package' => $replicate]);
     }
 
     /**
      * Show the form for creating a new resource.
-     *
-     * @return \Illuminate\Http\Response
      */
     public function create()
     {
         return view('shop::admin.packages.create', [
-            'categories' => Category::all(),
+            'categories' => Category::with('packages')->get(),
             'roles' => Role::where('is_admin', false)->get(),
             'servers' => Server::executable()->get(),
+            'variables' => Variable::all(),
+            'commandTriggers' => Package::COMMAND_TRIGGERS,
         ]);
     }
 
     /**
      * Store a newly created resource in storage.
-     *
-     * @param  \Azuriom\Plugin\Shop\Requests\PackageRequest  $request
-     * @return \Illuminate\Http\Response
      */
     public function store(PackageRequest $request)
     {
-        $package = Package::create(Arr::except($request->validated(), 'image'));
+        $package = Package::create(Arr::except($request->validated(), [
+            'image', 'file', 'variables',
+        ]));
 
         if ($request->hasFile('image')) {
             $package->storeImage($request->file('image'), true);
         }
 
-        $package->servers()->sync($request->input('servers', []));
+        if ($request->hasFile('file')) {
+            $package->storeFile($request->file('file'), true);
+        }
 
-        return redirect()->route('shop.admin.packages.index')
-            ->with('success', trans('shop::admin.packages.status.created'));
+        $package->variables()->sync($request->input('variables', []));
+
+        return to_route('shop.admin.packages.index')
+            ->with('success', trans('messages.status.success'));
     }
 
     /**
      * Show the form for editing the specified resource.
-     *
-     * @param  \Azuriom\Plugin\Shop\Models\Package  $package
-     * @return \Illuminate\Http\Response
      */
     public function edit(Package $package)
     {
         return view('shop::admin.packages.edit', [
             'package' => $package,
-            'categories' => Category::all(),
+            'categories' => Category::with('packages')->get(),
             'roles' => Role::where('is_admin', false)->get(),
             'servers' => Server::executable()->get(),
+            'variables' => Variable::all(),
+            'commandTriggers' => Package::COMMAND_TRIGGERS,
         ]);
     }
 
     /**
      * Update the specified resource in storage.
-     *
-     * @param  \Azuriom\Plugin\Shop\Requests\PackageRequest  $request
-     * @param  \Azuriom\Plugin\Shop\Models\Package  $package
-     * @return \Illuminate\Http\Response
      */
     public function update(PackageRequest $request, Package $package)
     {
@@ -160,27 +153,35 @@ class PackageController extends Controller
             $package->storeImage($request->file('image'));
         }
 
-        $package->update(Arr::except($request->validated(), 'image'));
+        $package->update(Arr::except($request->validated(), [
+            'image', 'file', 'variables',
+        ]));
 
-        $package->servers()->sync($request->input('servers', []));
+        if ($request->hasFile('file')) {
+            $package->storeFile($request->file('file'), true);
+        }
 
-        return redirect()->route('shop.admin.packages.index')
-            ->with('success', trans('shop::admin.packages.status.updated'));
+        $package->variables()->sync($request->input('variables', []));
+
+        return to_route('shop.admin.packages.index')
+            ->with('success', trans('messages.status.success'));
     }
 
     /**
      * Remove the specified resource from storage.
      *
-     * @param  \Azuriom\Plugin\Shop\Models\Package  $package
-     * @return \Illuminate\Http\Response
-     *
-     * @throws \Exception
+     * @throws \LogicException
      */
     public function destroy(Package $package)
     {
+        if ($package->subscriptions()->scopes('active')->exists()) {
+            return to_route('shop.admin.packages.index')
+                ->with('error', trans('shop::admin.subscriptions.error'));
+        }
+
         $package->delete();
 
-        return redirect()->route('shop.admin.packages.index')
-            ->with('success', trans('shop::admin.packages.status.deleted'));
+        return to_route('shop.admin.packages.index')
+            ->with('success', trans('messages.status.success'));
     }
 }

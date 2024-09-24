@@ -4,22 +4,20 @@ namespace Azuriom\Plugin\Shop\Controllers\Admin;
 
 use Azuriom\Http\Controllers\Controller;
 use Azuriom\Plugin\Shop\Models\Gateway;
+use Azuriom\Plugin\Shop\Models\Subscription;
 use Azuriom\Plugin\Shop\Payment\PaymentManager;
 use Azuriom\Plugin\Shop\Requests\GatewayRequest;
+use Illuminate\Http\Request;
 
 class GatewayController extends Controller
 {
     /**
      * The payment manager instance.
-     *
-     * @var PaymentManager
      */
-    protected $paymentManager;
+    protected PaymentManager $paymentManager;
 
     /**
      * Create a new controller instance.
-     *
-     * @param  \Azuriom\Plugin\Shop\Payment\PaymentManager  $paymentManager
      */
     public function __construct(PaymentManager $paymentManager)
     {
@@ -28,22 +26,18 @@ class GatewayController extends Controller
 
     /**
      * Display a listing of the resource.
-     *
-     * @return \Illuminate\Http\Response
      */
     public function index()
     {
-        $gateways = Gateway::all()->filter(function ($gateway) {
-            return payment_manager()->hasPaymentMethod($gateway->type);
-        });
+        $gateways = Gateway::orderBy('position')
+            ->get()
+            ->filter(fn (Gateway $gateway) => $gateway->isSupported());
 
         $gatewayTypes = $gateways->pluck('type');
 
         $paymentMethods = $this->paymentManager->getPaymentMethods()
             ->keys()
-            ->filter(function ($type) use ($gatewayTypes) {
-                return ! $gatewayTypes->contains($type);
-            });
+            ->filter(fn ($type) => ! $gatewayTypes->contains($type));
 
         return view('shop::admin.gateways.index', [
             'gateways' => $gateways,
@@ -51,11 +45,25 @@ class GatewayController extends Controller
         ]);
     }
 
+    public function updateOrder(Request $request)
+    {
+        $this->validate($request, [
+            'gateways' => ['required', 'array'],
+        ]);
+
+        $roles = $request->input('gateways');
+
+        $position = 1;
+
+        foreach ($roles as $id) {
+            Gateway::whereKey($id)->update(['position' => $position++]);
+        }
+
+        return response()->json(['message' => trans('messages.status.success')]);
+    }
+
     /**
      * Show the form for creating a new resource.
-     *
-     * @param  string  $type
-     * @return \Illuminate\Http\Response
      */
     public function create(string $type)
     {
@@ -66,9 +74,6 @@ class GatewayController extends Controller
 
     /**
      * Store a newly created resource in storage.
-     *
-     * @param  \Azuriom\Plugin\Shop\Requests\GatewayRequest  $request
-     * @return \Illuminate\Http\Response
      *
      * @throws \Illuminate\Validation\ValidationException
      */
@@ -85,15 +90,12 @@ class GatewayController extends Controller
             'type' => $type,
         ] + $request->validated());
 
-        return redirect()->route('shop.admin.gateways.index')
-            ->with('success', trans('shop::admin.gateways.status.created'));
+        return to_route('shop.admin.gateways.index')
+            ->with('success', trans('messages.status.success'));
     }
 
     /**
      * Show the form for editing the specified resource.
-     *
-     * @param  \Azuriom\Plugin\Shop\Models\Gateway  $gateway
-     * @return \Illuminate\Http\Response
      */
     public function edit(Gateway $gateway)
     {
@@ -106,10 +108,6 @@ class GatewayController extends Controller
     /**
      * Update the specified resource in storage.
      *
-     * @param  \Azuriom\Plugin\Shop\Requests\GatewayRequest  $request
-     * @param  \Azuriom\Plugin\Shop\Models\Gateway  $gateway
-     * @return \Illuminate\Http\Response
-     *
      * @throws \Illuminate\Validation\ValidationException
      */
     public function update(GatewayRequest $request, Gateway $gateway)
@@ -118,23 +116,25 @@ class GatewayController extends Controller
 
         $gateway->update(['data' => $data] + $request->validated());
 
-        return redirect()->route('shop.admin.gateways.index')
-            ->with('success', trans('shop::admin.gateways.status.updated'));
+        return to_route('shop.admin.gateways.index')
+            ->with('success', trans('messages.status.success'));
     }
 
     /**
      * Remove the specified resource from storage.
      *
-     * @param  \Azuriom\Plugin\Shop\Models\Gateway  $gateway
-     * @return \Illuminate\Http\Response
-     *
-     * @throws \Exception
+     * @throws \LogicException
      */
     public function destroy(Gateway $gateway)
     {
+        if (Subscription::active()->where('gateway_type', $gateway->type)->exists()) {
+            return to_route('shop.admin.packages.index')
+                ->with('error', trans('shop::admin.subscriptions.error'));
+        }
+
         $gateway->delete();
 
-        return redirect()->route('shop.admin.gateways.index')
-            ->with('success', trans('shop::admin.gateways.status.deleted'));
+        return to_route('shop.admin.gateways.index')
+            ->with('success', trans('messages.status.success'));
     }
 }

@@ -6,20 +6,18 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-class CreateShopPaymentItemsTable extends Migration
+return new class extends Migration
 {
     /**
      * Run the migrations.
-     *
-     * @return void
      */
-    public function up()
+    public function up(): void
     {
         Schema::create('shop_payment_items', function (Blueprint $table) {
             $table->increments('id');
             $table->unsignedInteger('payment_id');
             $table->string('name');
-            $table->unsignedDecimal('price');
+            $table->decimal('price');
             $table->unsignedInteger('quantity');
             $table->morphs('buyable'); // offer or package
             $table->timestamps();
@@ -27,7 +25,7 @@ class CreateShopPaymentItemsTable extends Migration
             $table->foreign('payment_id')
                 ->references('id')
                 ->on('shop_payments')
-                ->onDelete('cascade');
+                ->cascadeOnDelete();
         });
 
         if (file_exists($path = storage_path('shop_backup.json'))) {
@@ -37,10 +35,8 @@ class CreateShopPaymentItemsTable extends Migration
 
     /**
      * Reverse the migrations.
-     *
-     * @return void
      */
-    public function down()
+    public function down(): void
     {
         Schema::dropIfExists('shop_payment_items');
     }
@@ -49,7 +45,8 @@ class CreateShopPaymentItemsTable extends Migration
     {
         @set_time_limit(180); // 3 minutes
 
-        $payments = json_decode(file_get_contents($path), true);
+        $content = file_get_contents($path);
+        $payments = json_decode($content, true, flags: JSON_THROW_ON_ERROR);
 
         foreach ($payments as $payment) {
             $paymentID = DB::table('shop_payments')->insertGetId(Arr::except($payment, 'items'));
@@ -67,4 +64,4 @@ class CreateShopPaymentItemsTable extends Migration
             }
         }
     }
-}
+};

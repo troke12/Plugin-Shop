@@ -35,14 +35,13 @@ class XsollaMethod extends PaymentMethod
     public function startPayment(Cart $cart, float $amount, string $currency)
     {
         $sandbox = ($this->gateway->data['sandbox'] === 'true');
-        $user = auth()->user();
-
+        $projectId = $this->gateway->data['project-id'];
         $payment = $this->createPayment($cart, $amount, $currency);
 
         // Their PHP SDK need casts everywhere...
-        $tokenRequest = new TokenRequest((int) $this->gateway->data['project-id'], (string) $user->id);
-        $tokenRequest->setUserEmail($user->mail)
-            ->setUserName($user->name)
+        $tokenRequest = new TokenRequest((int) $projectId, (string) $payment->user->id);
+        $tokenRequest->setUserEmail($payment->user->mail)
+            ->setUserName($payment->user->name)
             ->setExternalPaymentId((string) $payment->id)
             ->setSandboxMode($sandbox)
             ->setPurchase($amount, $currency);
@@ -63,31 +62,12 @@ class XsollaMethod extends PaymentMethod
     {
         $webhookServer = WebhookServer::create(function (Message $message) {
             if ($message->isUserValidation()) {
-                if (! User::whereKey($message->getUserId())->exists()) {
-                    throw new InvalidUserException('Unknown user id: '.$message->getUserId());
-                }
+                $this->handleUserValidation($message);
 
                 return;
             }
 
-            if ($message->isPayment()) {
-                /** @var \Xsolla\SDK\Webhook\Message\PaymentMessage $message */
-                $payment = Payment::find($message->getExternalPaymentId());
-
-                if ($payment === null) {
-                    throw new InvalidInvoiceException('Unknown payment id: '.$message->getExternalPaymentId());
-                }
-
-                $this->processPayment($payment, $message->getPaymentId());
-
-                return;
-            }
-
-            if ($message->isRefund()) {
-                return; // TODO handle refunds
-            }
-
-            throw new XsollaWebhookException('Notification type not implemented');
+            $this->handleMessage($message);
         }, $this->gateway->data['secret-key']);
 
         $headers = array_map(function ($headers) {
@@ -99,17 +79,12 @@ class XsollaMethod extends PaymentMethod
         return $webhookServer->getSymfonyResponse($webhookRequest);
     }
 
-    public function success(Request $request)
-    {
-        return view('shop::payments.success');
-    }
-
-    public function view()
+    public function view(): string
     {
         return 'shop::admin.gateways.methods.xsolla';
     }
 
-    public function rules()
+    public function rules(): array
     {
         return [
             'merchant-id' => ['required', 'string'],
@@ -118,5 +93,46 @@ class XsollaMethod extends PaymentMethod
             'secret-key' => ['required', 'string'],
             'sandbox' => ['required', 'in:true,false'],
         ];
+    }
+
+    protected function handleMessage(Message $message): void
+    {
+        if (! $message->isPayment() && ! $message->isRefund()) {
+            throw new XsollaWebhookException('Notification type not implemented');
+        }
+
+        /** @var \Xsolla\SDK\Webhook\Message\PaymentMessage $message */
+        $payment = Payment::find($message->getExternalPaymentId());
+
+        if ($payment === null) {
+            throw new InvalidInvoiceException('Unknown payment id: '.$message->getExternalPaymentId());
+        }
+
+        if ($message->isRefund()) {
+            $this->processRefund($payment);
+
+            return;
+        }
+
+        $this->processPayment($payment, $message->getPaymentId());
+    }
+
+    protected function handleUserValidation(Message $message): void
+    {
+        $userId = $message->getUserId();
+
+        if (! is_numeric($userId) || ! User::whereKey($userId)->exists()) {
+            throw new InvalidUserException('Unknown user id: '.$message->getUserId());
+        }
+    }
+}
+
+namespace GuzzleHttp\Psr7;
+
+// Workaround for https://github.com/xsolla/xsolla-sdk-php/issues/95
+if (! function_exists('GuzzleHttp\Psr7\str')) {
+    function str($message)
+    {
+        return Message::toString($message);
     }
 }

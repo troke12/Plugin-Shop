@@ -5,23 +5,24 @@ namespace Azuriom\Plugin\Shop\Controllers\Admin;
 use Azuriom\Http\Controllers\Controller;
 use Azuriom\Plugin\Shop\Models\Giftcard;
 use Azuriom\Plugin\Shop\Requests\GiftcardRequest;
+use Illuminate\Http\Request;
 
 class GiftcardController extends Controller
 {
     /**
      * Display a listing of the resource.
-     *
-     * @return \Illuminate\Http\Response
      */
     public function index()
     {
-        return view('shop::admin.giftcards.index', ['giftcards' => Giftcard::all()]);
+        $giftcards = Giftcard::with('payments')->get();
+
+        $giftcards->each(fn (Giftcard $card) => $card->refreshBalance());
+
+        return view('shop::admin.giftcards.index', ['giftcards' => $giftcards]);
     }
 
     /**
      * Show the form for creating a new resource.
-     *
-     * @return \Illuminate\Http\Response
      */
     public function create()
     {
@@ -30,59 +31,53 @@ class GiftcardController extends Controller
 
     /**
      * Store a newly created resource in storage.
-     *
-     * @param  \Azuriom\Plugin\Shop\Requests\GiftcardRequest  $request
-     * @return \Illuminate\Http\Response
      */
     public function store(GiftcardRequest $request)
     {
-        $giftcard = Giftcard::create($request->validated());
+        Giftcard::create(array_merge($request->validated(), [
+            'original_balance' => $request->input('balance'),
+        ]));
 
-        return redirect()->route('shop.admin.giftcards.index')
-            ->with('success', trans('shop::admin.giftcards.status.created'));
+        return to_route('shop.admin.giftcards.index')
+            ->with('success', trans('messages.status.success'));
     }
 
     /**
      * Show the form for editing the specified resource.
-     *
-     * @param  \Azuriom\Plugin\Shop\Models\Coupon  $coupon
-     * @return \Illuminate\Http\Response
      */
     public function edit(Giftcard $giftcard)
     {
-        return view('shop::admin.giftcards.edit', [
-            'giftcard' => $giftcard,
-        ]);
+        $giftcard->load('payments')->refreshBalance();
+
+        return view('shop::admin.giftcards.edit', ['giftcard' => $giftcard]);
     }
 
     /**
      * Update the specified resource in storage.
-     *
-     * @param  \Azuriom\Plugin\Shop\Requests\GiftcardRequest  $request
-     * @param  \Azuriom\Plugin\Shop\Models\Giftcard  $giftcard
-     * @return \Illuminate\Http\Response
      */
-    public function update(GiftcardRequest $request, Giftcard $giftcard)
+    public function update(Request $request, Giftcard $giftcard)
     {
-        $giftcard->update($request->validated());
+        $validated = $this->validate($request, [
+            'start_at' => ['required', 'date'],
+            'expire_at' => ['required', 'date', 'after:start_at'],
+        ]);
 
-        return redirect()->route('shop.admin.giftcards.index')
-            ->with('success', trans('shop::admin.giftcards.status.updated'));
+        $giftcard->update($validated);
+
+        return to_route('shop.admin.giftcards.index')
+            ->with('success', trans('messages.status.success'));
     }
 
     /**
      * Remove the specified resource from storage.
      *
-     * @param  \Azuriom\Plugin\Shop\Models\Giftcard  $coupon
-     * @return \Illuminate\Http\Response
-     *
-     * @throws \Exception
+     * @throws \LogicException
      */
     public function destroy(Giftcard $giftcard)
     {
         $giftcard->delete();
 
-        return redirect()->route('shop.admin.giftcards.index')
-            ->with('success', trans('shop::admin.giftcards.status.deleted'));
+        return to_route('shop.admin.giftcards.index')
+            ->with('success', trans('messages.status.success'));
     }
 }

@@ -8,15 +8,10 @@ use Illuminate\Notifications\Notification;
 
 class PaymentPaid extends Notification
 {
-    /**
-     * @var \Azuriom\Plugin\Shop\Models\Payment
-     */
-    protected $payment;
+    protected Payment $payment;
 
     /**
      * Create a new notification instance.
-     *
-     * @param  \Azuriom\Plugin\Shop\Models\Payment  $payment
      */
     public function __construct(Payment $payment)
     {
@@ -24,34 +19,45 @@ class PaymentPaid extends Notification
     }
 
     /**
-     * Get the notification's delivery channels.
-     *
-     * @param  mixed  $notifiable
-     * @return array
-     */
-    public function via($notifiable)
-    {
-        return ['mail'];
-    }
-
-    /**
      * Get the mail representation of the notification.
-     *
-     * @param  mixed  $notifiable
-     * @return \Illuminate\Notifications\Messages\MailMessage
      */
-    public function toMail($notifiable)
+    public function toMail(): MailMessage
     {
-        $total = $this->payment->price.' '.currency_display($this->payment->currency);
+        $transactionId = $this->payment->isWithSiteMoney()
+            ? '#'.$this->payment->id
+            : $this->payment->transaction_id;
 
         return (new MailMessage())
             ->subject(trans('shop::mails.payment.subject'))
-            ->line(trans('shop::mails.payment.intro', ['user' => $this->payment->user->name]))
-            ->line(trans('shop::mails.payment.total', ['total' => $total]))
+            ->line(trans('shop::mails.payment.intro', [
+                'user' => $this->payment->user->name,
+            ]))
+            ->line(trans('shop::mails.payment.total', [
+                'total' => $this->payment->formatPrice(),
+            ]))
             ->line(trans('shop::mails.payment.transaction', [
-                'transaction' => $this->payment->transaction_id,
+                'transaction' => $transactionId,
                 'gateway' => $this->payment->getTypeName(),
             ]))
-            ->line(trans('shop::mails.payment.date', ['date' => format_date($this->payment->created_at, true)]));
+            ->line(trans('shop::mails.payment.date', [
+                'date' => format_date($this->payment->created_at, true),
+            ]))
+            ->when($this->payment->subscription, function (MailMessage $message) {
+                $subscription = $this->payment->subscription;
+
+                $message->line(trans('shop::mails.payment.subscription', [
+                    'date' => format_date($subscription->created_at, true),
+                ]))->action(trans('shop::mails.payment.subscription'), route('shop.profile'));
+            });
+    }
+
+    /**
+     * Get the notification's delivery channels.
+     *
+     * @return array<int, string>
+     */
+    public function via(object $notifiable): array
+    {
+        return ['mail'];
     }
 }

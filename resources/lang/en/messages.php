@@ -2,107 +2,150 @@
 
 return [
     'title' => 'Shop',
+    'welcome' => 'Welcome on the shop!',
 
     'buy' => 'Buy',
 
     'free' => 'Free',
 
-    'month-goal' => 'Goal of the month',
-    'month-goal-current' => ':count% completed',
+    'periods' => [
+        'hours' => 'hours',
+        'days' => 'days',
+        'weeks' => 'weeks',
+        'months' => 'months',
+        'years' => 'years',
+    ],
 
     'fields' => [
-        'price' => 'Price',
-        'total' => 'Total',
-        'quantity' => 'Quantity',
-        'currency' => 'Currency',
+        'balance' => 'Balance',
         'category' => 'Category',
+        'code' => 'Code',
+        'commands' => 'Commands',
+        'currency' => 'Currency',
+        'discount' => 'Discount',
+        'expire_date' => 'Expire date',
+        'gateways' => 'Gateways',
+        'global_limit' => 'Global purchase limit',
+        'original_balance' => 'Original Balance',
         'package' => 'Package',
         'packages' => 'Packages',
-        'gateways' => 'Gateways',
-        'servers' => 'Servers',
-        'code' => 'Code',
-        'discount' => 'Discount',
-        'commands' => 'Commands',
-        'start_date' => 'Start date',
-        'expire_date' => 'Expire date',
-        'required_packages' => 'Required Packages',
-        'user_limit' => 'User purchase limit',
-        'status' => 'Status',
-        'payment-id' => 'Payment ID',
+        'payment_id' => 'Payment ID',
+        'payments' => 'Payments',
+        'price' => 'Price',
+        'quantity' => 'Quantity',
+        'renewal_date' => 'Renewal date',
+        'required' => 'Required',
+        'required_packages' => 'Required packages',
+        'required_roles' => 'Required role',
         'role' => 'Role to set after purchase',
+        'start_date' => 'Start date',
+        'subscription' => 'Subscription',
+        'subscription_id' => 'Subscription ID',
+        'total' => 'Total',
+        'user_id' => 'User ID',
+        'user_limit' => 'User purchase limit',
     ],
 
     'actions' => [
-        'remove' => 'Remove',
+        'subscribe' => 'Subscribe',
+        'manage' => 'Manage subscription',
+        'move' => 'Move',
+    ],
+
+    'goal' => [
+        'title' => 'Goal of the month',
+        'progress' => ':count% completed',
+    ],
+
+    'recent' => [
+        'title' => 'Recent Payments',
+        'empty' => 'No recent payments',
+    ],
+
+    'top' => [
+        'title' => 'Top customer',
+    ],
+
+    'cart' => [
+        'title' => 'Cart',
+        'success' => 'Your purchase has been successfully completed.',
+        'guest' => 'You must be logged in to make a purchase.',
+        'empty' => 'Your cart is empty.',
+        'checkout' => 'Checkout',
+        'clear' => 'Clear the cart',
+        'pay' => 'Pay',
+        'back' => 'Back to shop',
+        'total' => 'Total: :total',
+        'payable_total' => 'Total to pay: :total',
+        'credit' => 'Credit',
+
+        'confirm' => [
+            'title' => 'Pay?',
+            'price' => 'Are you sure you want to buy this cart for :price.',
+        ],
+
+        'errors' => [
+            'money' => 'You don\'t have enough money to make this purchase.',
+            'execute' => 'An unexpected error occurred during payment, your purchase got refund.',
+        ],
+    ],
+
+    'coupons' => [
+        'title' => 'Coupons',
+        'add' => 'Add a coupon',
+        'error' => 'This coupon does not exist, has expired or can no longer be used.',
+        'cumulate' => 'You cannot use this coupon with an other coupon.',
+    ],
+
+    'payment' => [
+        'title' => 'Payment',
+        'manual' => 'Manual payment',
+
+        'empty' => 'No payment methods currently available.',
+
+        'info' => 'Purchase #:id on :website',
+        'subscription' => ':package - Subscription (User #:user)',
+        'error' => 'The payment could not be completed, please try again later.',
+        'giftcards' => 'Giftcards',
+
+        'success' => 'Payment completed, you\'ll receive your purchase in-game in less than a minute.',
+        'pending' => 'Payment pending, you\'ll receive your purchase in-game once the payment is confirmed.',
+
+        'webhook' => 'New payment on the shop',
+        'webhook_info' => 'Total: :total, ID: :id (:gateway)',
+        'webhook_chargeback' => 'Payment chargeback on the shop',
+        'webhook_refund' => 'Payment refund on the shop',
     ],
 
     'categories' => [
         'empty' => 'This category is empty.',
     ],
 
-    'cart' => [
-        'title' => 'Cart',
-        'error-money' => 'You don\'t have enough money to make this purchase.',
-        'purchase' => 'Your purchase has been successfully completed.',
-
-        'pay-confirm-title' => 'Pay ?',
-        'pay-confirm' => 'Are you sure you want to buy this cart for :price.',
-
-        'guest' => 'You must be login to make a purchase.',
-        'empty' => 'Your cart is empty.',
-
-        'checkout' => 'Checkout',
-        'remove' => 'Remove',
-        'clear' => 'Clear the cart',
-        'pay' => 'Pay',
-
-        'coupons' => 'Coupons',
-        'add-coupon' => 'Add a coupon',
-        'invalid-coupon' => 'This coupon does not exist, has expired or can no longer be used.',
-        'cannot-cumulate' => 'You cannot use this coupon with an other coupon.',
-
-        'back' => 'Back to shop',
-
-        'total' => 'Total: :total',
-
-        'credit' => 'Credit',
-    ],
-
-    'payment' => [
-        'title' => 'Payment',
-
-        'empty' => 'No payment methods currently available.',
-
-        'info' => 'Purchase #:id on :website',
-        'error' => 'The payment could not be completed.',
-
-        'success' => 'Payment completed',
-        'success-info' => 'You\'ll receive your purchase in-game in less than a minute.',
-
-        'redirect-info' => 'If you are not redirected automatically check that javascript is enabled on your browser.',
-
-        'webhook' => 'New payment on the shop',
-    ],
-
     'packages' => [
         'limit' => 'You have purchased the maximum possible for this packages.',
-        'requirements' => 'You have not purchased the necessary packages to purchase this package.',
+        'requirements' => 'You don\'t have the requirements to purchase this package.',
+        'cumulate' => 'You cannot buy this package with an other from the same category in the same purchase.',
+        'file' => 'Click here to download the file :file',
     ],
 
     'offers' => [
-        'title-payment' => 'Payment type',
-        'title-select' => 'Amount',
+        'gateway' => 'Payment type',
+        'amount' => 'Amount',
 
         'empty' => 'No offers are currently available.',
     ],
 
     'profile' => [
         'payments' => 'Your payments',
+        'subscriptions' => 'Your subscriptions',
+        'money' => 'Money: :balance',
     ],
 
     'giftcards' => [
-        'success' => ':money have been credited to your account',
+        'title' => 'Giftcards',
         'error' => 'This gift card does not exist, has expired or can no longer be used.',
-        'add' => 'Redeem a gift card',
+        'add' => 'Add a gift card',
+        'notification' => 'You received a giftcard, the code is :code (:balance).',
+        'pending' => 'A payment has already started for this giftcard. Complete the payment or wait a few minutes.',
     ],
 ];
